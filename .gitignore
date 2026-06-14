@@ -1,0 +1,10 @@
+venv/
+images/
+top_10_faces/
+__pycache__/
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+.vscode/
