@@ -1,36 +1,57 @@
-# Görsel Programlama Final Projesi - Yüz Kümeleme (Face Clustering)
+# 👤 Unsupervised Face Clustering on News Photos
 
-Bu proje, Balıkesir Üniversitesi haber sayfasından (`balikesir.edu.tr/haberler`) fotoğrafları otomatik indirerek, önceden hazırlanmış bir isim veri tabanı kullanmadan gözetimsiz öğrenme (DBSCAN) yöntemiyle en sık görünen ilk 10 kişiyi tespit etmeyi amaçlar.
+This pipeline finds the **10 most frequently appearing people** in a university's news photos **without any labeled data or name database**. It scrapes the images, detects faces, turns each face into an embedding with a deep CNN, and groups identical people with **DBSCAN** clustering.
 
-## Proje Yapısı
-- `main.py`: Projenin (Web Scraping, Yüz Tespiti, Kümeleme ve Raporlama) tamamını çalıştıran ana kod.
-- `requirements.txt`: Projenin çalışması için gereken Python kütüphaneleri listesi.
-- `images/` (Çalıştırılınca oluşur): Siteden indirilen haber fotoğrafları.
-- `top_10_faces/` (Çalıştırılınca oluşur): Sistem tarafından en sık bulunduğu tespit edilen 10 kişinin ilk kırpılmış yüzleri.
+Final project for the *Visual Programming / Image Processing* course at Balıkesir University (Spring 2026).
 
-## Kurulum ve Çalıştırma (Teams Teslimi Öncesi)
+## How It Works
 
-**1. Kütüphanelerin Yüklenmesi:**
-Proje dizininde bir terminal (komut satırı) açın ve aşağıdaki kodu yazarak gerekli kütüphaneleri yükleyin:
-```bash
-pip install -r requirements.txt
 ```
-*(Not: `torch`, `facenet-pytorch`, `opencv-python` ve `scikit-learn` arka planda gerekli makine öğrenmesi araçlarını kuracaktır. İnternet hızınıza ve PyTorch boyutlarına bağlı olarak birkaç dakika sürebilir.)*
+balikesir.edu.tr/haberler
+        │  1. Scrape (requests + BeautifulSoup, paginated, filtered by month)
+        ▼
+   news images
+        │  2. Detect faces (MTCNN, confidence ≥ 0.80, min size 30 px)
+        ▼
+   face crops
+        │  3. Embed (InceptionResnetV1 pretrained on VGGFace2 → 512-d vectors)
+        ▼
+   embeddings
+        │  4. Cluster (DBSCAN, cosine distance, eps = 0.20, min_samples = 2)
+        ▼
+   identity clusters → rank by size → save the top 10 faces
+```
 
-**2. Projeyi Çalıştırma:**
+1. **Scraping:** walks the news listing page by page, opens each article, parses its date and collects only the photos from the target month (May 2026). It stops as soon as it reaches older news.
+2. **Face detection:** uses MTCNN from `facenet-pytorch`. Low-confidence and very small detections are discarded.
+3. **Embeddings:** each face is mapped to a 512-dimensional vector in which faces of the same person lie close together.
+4. **Clustering:** DBSCAN groups the embeddings without needing the number of people in advance. Noise points (label `-1`) are dropped. A strict `eps` prevents one giant cluster from forming.
+5. **Report:** prints the top 10 clusters by size and saves one representative crop per person to `top_10_faces/`.
+
+The pipeline runs on the GPU (CUDA) when one is available and falls back to the CPU otherwise.
+
+## Tech Stack
+
+| Step | Tools |
+|---|---|
+| Scraping | requests, BeautifulSoup4 |
+| Detection and embedding | PyTorch, facenet-pytorch (MTCNN, InceptionResnetV1 / VGGFace2) |
+| Clustering | scikit-learn (DBSCAN) |
+| Image I/O | OpenCV, Pillow, NumPy |
+
+## Getting Started
+
 ```bash
+git clone https://github.com/AlperSayginEtci/Goruntu_Isleme_Finel_Odevi.git
+cd Goruntu_Isleme_Finel_Odevi
+pip install -r requirements.txt
 python main.py
 ```
-Program çalıştığında sırasıyla:
-1. Web sitesine bağlanıp `images` klasörüne resimleri indirecek.
-2. Makine öğrenmesi modeli (MTCNN ve InceptionResnetV1) ile her bir yüzün 512 boyutlu vektörünü çıkaracak (ilk çalışmada VGGFace2 modelinin küçük bir dosyasını internetten otomatik indirebilir, izin verin).
-3. **DBSCAN** algoritması ile bu vektörlerin birbirine uzaklıklarını ölçerek aynı kişileri aynı "Küme ID"si altına toplayacak. (İsim kullanmadan eşleştirme mantığı burasıdır).
-4. Konsolda 1'den 10'a kadar bir sıralama yapıp, bu kişilerin kırpılmış yüz fotoğraflarını `top_10_faces` klasörüne kaydedecektir.
 
-## Teams'e Nasıl Yüklemelisiniz?
-Projenin çalıştığından emin olduktan sonra:
-1. Oluşan `images/` ve `top_10_faces/` klasörlerinin içini boşaltabilirsiniz (Hoca kendisi çalıştırıp sonuçları görecektir).
-2. `main.py`, `requirements.txt`, `README.md` ve daha önce oluşturulan `proje_cozum_yontemi.md` dosyasını seçip **sağ tıklayarak ZIP haline (Arşive Ekle)** getirin.
-3. Oluşan bu ZIP dosyasını Teams'e Final Sınavı ödevi olarak yükleyebilirsiniz.
+On the first run, the pretrained VGGFace2 weights are downloaded automatically. The output is written to:
+- `images/`: downloaded news photos
+- `top_10_faces/`: one cropped face per top-10 person, named like `Sira_1_KisiID_4_23_Kez.jpg` (rank, cluster ID, count)
 
-Başarılar dilerim!
+## Notes
+- Everything runs locally. No names or identities are attached to the clusters.
+- `eps` is the key hyperparameter. A higher value merges different people, and a lower value splits one person into several clusters.
